@@ -1,38 +1,48 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { productApi } from "../api/products";
+import type { Product, ProductInput } from "../types/product";
 
 const productsKey = ["products"] as const;
 
-export const useProductDetail = (id: number | null) =>
-  useQuery({
-    queryKey: ["products", id],
-    queryFn: ({ signal }) => productApi.get(id!, signal),
-    enabled: id !== null,
-  });
-
-export const useProducts = () =>
-  useQuery({
+export function useProducts() {
+  return useQuery({
     queryKey: productsKey,
     queryFn: ({ signal }) => productApi.list(signal),
     retry: 1,
   });
+}
 
 export function useProductActions() {
   const queryClient = useQueryClient();
-  const invalidate = () =>
+  const refresh = () =>
     queryClient.invalidateQueries({ queryKey: productsKey });
   const create = useMutation({
     mutationFn: productApi.create,
-    onSuccess: invalidate,
+    onSuccess: (created) => {
+      queryClient.setQueryData<Product[]>(productsKey, (current) =>
+        current ? [...current, created] : [created],
+      );
+      void refresh();
+    },
   });
-  const updateStock = useMutation({
-    mutationFn: ({ id, stock }: { id: number; stock: number }) =>
-      productApi.updateStock(id, { stock }),
-    onSuccess: invalidate,
+  const update = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: ProductInput }) =>
+      productApi.update(id, data),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Product[]>(productsKey, (current) =>
+        current?.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      void refresh();
+    },
   });
   const remove = useMutation({
     mutationFn: productApi.remove,
-    onSuccess: invalidate,
+    onSuccess: (_, id) => {
+      queryClient.setQueryData<Product[]>(productsKey, (current) =>
+        current?.filter((item) => item.id !== id),
+      );
+      void refresh();
+    },
   });
-  return { create, updateStock, remove };
+  return { create, update, remove };
 }
