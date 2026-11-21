@@ -1,10 +1,9 @@
-import type {
-  CreateProductInput,
-  Product,
-  UpdateStockInput,
-} from "../types/product";
+import type { Product, ProductInput, UpdateStockInput } from "../types/product";
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const configuredUrl = (import.meta.env.VITE_API_BASE_URL || "")
+  .trim()
+  .replace(/\/$/, "");
+const apiBaseUrl = import.meta.env.DEV ? "" : configuredUrl;
 
 export class ApiError extends Error {
   constructor(
@@ -19,26 +18,31 @@ export class ApiError extends Error {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/productos${path}`, {
+    response = await fetch(`${apiBaseUrl}/api/productos${path}`, {
       ...options,
       headers: { "Content-Type": "application/json", ...options.headers },
       signal: options.signal ?? AbortSignal.timeout(10000),
     });
   } catch {
     throw new ApiError(
-      "No se pudo conectar con el servidor. Verifica que el backend esté encendido.",
+      "No se pudo conectar con el servidor. Comprueba que Spring Boot esté encendido.",
       0,
     );
   }
   if (!response.ok) {
-    throw new ApiError(
+    let message =
       response.status === 404
-        ? "No se encontró el producto."
+        ? "El producto no existe."
         : response.status === 400
-          ? "Verifica la información ingresada."
-          : `La solicitud falló (HTTP ${response.status}).`,
-      response.status,
-    );
+          ? "Revisa la información del formulario."
+          : `Error del servidor (HTTP ${response.status}).`;
+    try {
+      const result = (await response.json()) as { error?: string };
+      if (result.error && response.status !== 400) message = result.error;
+    } catch {
+      message = message || `Error HTTP ${response.status}`;
+    }
+    throw new ApiError(message, response.status);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -48,8 +52,10 @@ export const productApi = {
   list: (signal?: AbortSignal) => request<Product[]>("", { signal }),
   get: (id: number, signal?: AbortSignal) =>
     request<Product>(`/${id}`, { signal }),
-  create: (data: CreateProductInput) =>
+  create: (data: ProductInput) =>
     request<Product>("", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: number, data: ProductInput) =>
+    request<Product>(`/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   updateStock: (id: number, data: UpdateStockInput) =>
     request<Product>(`/${id}/stock`, {
       method: "PUT",

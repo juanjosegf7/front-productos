@@ -6,15 +6,15 @@ export interface Product {
   category: string;
 }
 
-export interface CreateProductInput {
+export interface ProductInput {
   name: string;
   price: number;
   stock: number;
   category: string;
 }
 
+export type CreateProductInput = ProductInput;
+export type UpdateProductInput = ProductInput;
 export interface UpdateStockInput {
   stock: number;
 }
-
-export type ProductFilter = "all" | "available" | "out";
